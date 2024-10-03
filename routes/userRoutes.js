@@ -18,6 +18,6 @@ router.post('/upload', storage.single('image'), upload); //'image' is the name o
 
 router.get('/getThumbnails', getThumbnails);
 
-router.get('/getGroups', getGroups);
+router.post('/getGroups', getGroups);
 
 module.exports = router;
