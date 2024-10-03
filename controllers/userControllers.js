@@ -171,7 +171,7 @@ module.exports.createGroup = async (req, res) => {
   }
 }
 
-module.exports.upload = async (req, res) => { //'image' is the name of the body parameter for file
+module.exports.upload = async (req, res) => { 
 
   const name = req.body.name;
   const extension = req.body.extension;
@@ -239,7 +239,7 @@ module.exports.upload = async (req, res) => { //'image' is the name of the body 
   }
 };
 
-module.exports.getThumbnails = async (req, res) => { //'image' is the name of the body parameter for file
+module.exports.getThumbnails = async (req, res) => {
 
   const gid = req.body.group_id;
 
@@ -250,6 +250,23 @@ module.exports.getThumbnails = async (req, res) => { //'image' is the name of th
     }
 
     return res.status(200).json({ thumbnails: group.images });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error, code: "Error" });
+  }
+};
+
+module.exports.getGroups = async (req, res) => {
+
+  const uid = req.body.user_id;
+
+  try {
+    const user = await User.findOne({ id: uid });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid user' });
+    }
+
+    return res.status(200).json({ groups: user.groups });
 
   } catch (error) {
     res.status(500).json({ message: 'Server error', error, code: "Error" });
