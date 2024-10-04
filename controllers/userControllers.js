@@ -272,3 +272,46 @@ module.exports.getGroups = async (req, res) => {
     res.status(500).json({ message: 'Server error', error, code: "Error" });
   }
 };
+
+module.exports.joinGroup = async (req, res) => {
+
+  const uid = req.body.user_id;
+  const gid = req.query.gid;        
+
+  try {
+
+    const user = await User.findOne({id: uid})
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid user' });
+    }
+
+    const group = await Group.findOneAndUpdate(
+      { id: gid },
+      { $push: { members: uid } },
+      { new: true }
+    );
+
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const changedUser = await User.findOneAndUpdate(
+      { id: uid },
+      { $push: { groups: gid } },
+      { new: true }
+    );
+
+    if (!changedUser) {
+      return res.status(404).json({ message: 'User not changes' });
+    }
+
+    return res.status(201).send({
+      message: `You have been joined to the group`
+    })
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
