@@ -3,12 +3,14 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
 const { transporter } = require('../utils/email');
 const User = require('../models/user');
 const Group = require('../models/group');
 const Image = require('../models/image');
 const { storage } = require('../storage');
 const cloudinary = require('cloudinary').v2;
+const FormData = require('form-data');
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -315,3 +317,154 @@ module.exports.joinGroup = async (req, res) => {
   }
 };
 
+module.exports.getImageDetails = async (req, res) => {
+
+  const uid = req.body.user_id;
+  const gid = req.body.group_id;
+  const imgId = req.body.image_id;   
+
+  try {
+
+    const group = await Group.findOne(
+      { id: gid },
+    );
+
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const image = group.images.find(img => img.id === imgId);
+
+    if (!image) {
+        return res.status(404).send({ message: 'Image not found' });
+    }
+
+    return res.status(200).send({
+      imageDetails: image 
+    })
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports.getImage = (req, res) => {
+
+  const uid = req.body.user_id;
+  const gid = req.body.group_id;
+  const imgId = req.body.image_id;   
+
+  try {
+
+    var found = false;
+
+    Group.findOne(
+      { id: gid }
+    ).then( (group) => {
+
+      if (!group) {
+        return res.status(404).json({ message: 'Group not found' });
+      }
+      
+      const image = group.images.find(img => img.id === imgId);
+
+      if (!image) {
+          return res.status(404).send({ message: 'Image not found' });
+      }
+
+      image.providers.forEach( (providerId) => {
+        User.findOne({id: providerId}).then((provider) => {
+          if(provider){
+            try{
+              const providerURL = `http://${provider.ip_address}:${provider.port}/users/sendImage`;
+
+              const data = {
+                group_id: gid,
+                name: image.name,
+                extension: image.extension
+              }
+              
+              axios.post(providerURL, data, {
+                responseType: 'arraybuffer'
+              }).then( async (response) => {
+                
+                const responseData = response.data;
+                const jsonResponse = response.headers['content-type'].includes('application/json') ? JSON.parse(responseData) : null;
+
+                // Extract the image data (assuming it’s in base64 format)
+                const imageBase64 = jsonResponse.image;
+
+                if(jsonResponse == null){
+                    return res.status(500).send('No JSON data received');
+                }
+      
+                if(jsonResponse.name == image.name && jsonResponse.extension == image.extension && jsonResponse.size == image.size){
+                  
+                  found = true;
+                  
+                  return res.status(200).send({
+                    imageData: jsonResponse
+                  })
+                }
+              })
+
+            } catch (error){
+              console.log(`Error from ${provider.ip_address}:${provider.port}`);
+            }
+          }
+        })
+      })
+    })
+
+    if(found){
+      return res.status(500).send('No providers found');
+    }
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports.imageReceivedAcknowledgement = async (req, res) => {
+
+  const uid = req.body.user_id;
+  const gid = req.body.group_id;
+  const imgId = req.body.image_id;   
+
+  try {
+
+    const group = await Group.findOne(
+      { id: gid },
+    );
+
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const image = group.images.find(img => img.id === imgId);
+
+    if (!image) {
+        return res.status(404).send({ message: 'Image not found' });
+    }
+
+    if(image.providers.includes(uid)){
+      return res.status(200).send('Provider exists');
+    } else{
+      image.providers.push(uid);
+
+      try{
+        await group.save().then( async () => {
+
+          return res.status(200).send('Acknowledged');
+
+        });
+      } catch (error) {
+        return res.status(500).send('Error saving group');
+      }
+
+    }
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};

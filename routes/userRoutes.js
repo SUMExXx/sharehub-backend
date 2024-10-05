@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { userRegister, userLogin, userVerifyToken, createGroup, upload, getThumbnails, updateUserDetails, getGroups, joinGroup } = require('../controllers/userControllers');
+const { userRegister, userLogin, userVerifyToken, createGroup, upload, getThumbnails, updateUserDetails, getGroups, joinGroup, getImageDetails, imageReceivedAcknowledgement, getImage } = require('../controllers/userControllers');
 const { storage } = require('../storage');
 require('dotenv').config();
 
@@ -21,5 +21,11 @@ router.post('/getThumbnails', getThumbnails);
 router.post('/getGroups', getGroups);
 
 router.post('/joinGroup', joinGroup);
+
+router.post('/getImageDetails', getImageDetails);
+
+router.post('/getImage', getImage);
+
+router.post('/imageReceivedAcknowledgement', imageReceivedAcknowledgement)
 
 module.exports = router;
