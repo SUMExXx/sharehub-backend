@@ -261,6 +261,7 @@ module.exports.getThumbnails = async (req, res) => {
 module.exports.getGroups = async (req, res) => {
 
   const uid = req.body.user_id;
+  var result = [];
 
   try {
     const user = await User.findOne({ id: uid });
@@ -268,7 +269,18 @@ module.exports.getGroups = async (req, res) => {
       return res.status(400).json({ message: 'Invalid user' });
     }
 
-    return res.status(200).json({ groups: user.groups });
+    const groupPromises = user.groups.map( async (group) => {
+      await Group.findOne({ id: group}, "name desc id").then((response) => {
+        if(!response){
+          console.log("Error")
+        }
+        result.push(response);
+      })
+    })
+
+    await Promise.all(groupPromises);
+
+    return res.status(200).json({ groups: result });
 
   } catch (error) {
     res.status(500).json({ message: 'Server error', error, code: "Error" });
@@ -348,76 +360,63 @@ module.exports.getImageDetails = async (req, res) => {
   }
 };
 
-module.exports.getImage = (req, res) => {
-
+module.exports.getImage = async (req, res) => {
   const uid = req.body.user_id;
   const gid = req.body.group_id;
-  const imgId = req.body.image_id;   
+  const imgId = req.body.image_id;
 
   try {
+    let found = false;
 
-    var found = false;
+    // Find the group
+    const group = await Group.findOne({ id: gid });
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
 
-    Group.findOne(
-      { id: gid }
-    ).then( (group) => {
+    const image = group.images.find((img) => img.id === imgId);
+    if (!image) {
+      return res.status(404).send({ message: 'Image not found' });
+    }
 
-      if (!group) {
-        return res.status(404).json({ message: 'Group not found' });
-      }
-      
-      const image = group.images.find(img => img.id === imgId);
+    // Loop over providers and try to fetch the image from one of them
+    for (const providerId of image.providers) {
+      try {
+        const provider = await User.findOne({ id: providerId });
+        if (provider) {
+          const providerURL = `http://${provider.ip_address}:${provider.port}/users/sendImage`;
 
-      if (!image) {
-          return res.status(404).send({ message: 'Image not found' });
-      }
+          const data = {
+            group_id: gid,
+            name: image.name,
+            extension: image.extension,
+          };
 
-      image.providers.forEach( (providerId) => {
-        User.findOne({id: providerId}).then((provider) => {
-          if(provider){
-            try{
-              const providerURL = `http://${provider.ip_address}:${provider.port}/users/sendImage`;
+          const response = await axios.post(providerURL, data, {
+            responseType: 'arraybuffer',
+          });
 
-              const data = {
-                group_id: gid,
-                name: image.name,
-                extension: image.extension
-              }
-              
-              axios.post(providerURL, data, {
-                responseType: 'arraybuffer'
-              }).then( async (response) => {
-                
-                const responseData = response.data;
-                const jsonResponse = response.headers['content-type'].includes('application/json') ? JSON.parse(responseData) : null;
+          const responseData = response.data;
+          const jsonResponse = response.headers['content-type'].includes('application/json') ? JSON.parse(responseData) : null;
 
-                // Extract the image data (assuming it’s in base64 format)
-                const imageBase64 = jsonResponse.image;
+          if (jsonResponse && jsonResponse.name === image.name && jsonResponse.extension === image.extension && jsonResponse.size === image.size) {
+            found = true;
 
-                if(jsonResponse == null){
-                    return res.status(500).send('No JSON data received');
-                }
-      
-                if(jsonResponse.name == image.name && jsonResponse.extension == image.extension && jsonResponse.size == image.size){
-                  
-                  found = true;
-                  
-                  return res.status(200).send({
-                    imageData: jsonResponse
-                  })
-                }
-              })
-
-            } catch (error){
-              console.log(`Error from ${provider.ip_address}:${provider.port}`);
-            }
+            // Send the response with the image data
+            return res.status(200).send({
+              imageData: jsonResponse,
+            });
           }
-        })
-      })
-    })
+        }
+      } catch (error) {
+        console.log(`Error connecting to provider at ${provider.ip_address}:${provider.port} - ${error.message}`);
+        // Continue to the next provider if there’s an error
+      }
+    }
 
-    if(found){
-      return res.status(500).send('No providers found');
+    // If no provider was able to deliver the image
+    if (!found) {
+      return res.status(404).send({ message: 'No available providers found with the requested image.' });
     }
 
   } catch (error) {
