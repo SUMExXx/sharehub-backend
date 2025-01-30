@@ -161,14 +161,16 @@ module.exports.createGroup = async (req, res) => {
         }
 
         return res.status(201).send({
-          message: `New group ${gName} has been created`
+          message: `New group ${gName} has been created`,
+          gid: createdGroup.id
         })
 
       } catch (error) {
         return res.status(500).json({ message: error.message });
       }
     })
-  }catch{
+  }catch (error){
+    console.log(error);
     res.status(500).json({ message: error.message });
   }
 }
@@ -317,7 +319,7 @@ module.exports.joinGroup = async (req, res) => {
     );
 
     if (!changedUser) {
-      return res.status(404).json({ message: 'User not changes' });
+      return res.status(403).json({ message: 'User not changed' });
     }
 
     return res.status(201).send({
@@ -384,7 +386,7 @@ module.exports.getImage = async (req, res) => {
       try {
         const provider = await User.findOne({ id: providerId });
         if (provider) {
-          const providerURL = `http://${provider.ip_address}:${provider.port}/users/sendImage`;
+          const providerURL = `http://${provider.ip_address}:${provider.port}/sendImage`;
 
           const data = {
             group_id: gid,
@@ -409,7 +411,7 @@ module.exports.getImage = async (req, res) => {
           }
         }
       } catch (error) {
-        console.log(`Error connecting to provider at ${provider.ip_address}:${provider.port} - ${error.message}`);
+        console.log(`Error connecting to provider`);
         // Continue to the next provider if there’s an error
       }
     }
